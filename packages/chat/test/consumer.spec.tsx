@@ -215,6 +215,7 @@ const messagesHost: MessagesHost = {
   useForkConversation: () => null,
   useMessageCopy: () => ({ copyToClipboard: () => undefined, canCopy: false }),
   useGetMessages: () => () => undefined,
+  useHasPendingTurn: () => false,
   renderMessageAudio: () => null,
   useScrolling: () => ({
     contentRef: { current: null },

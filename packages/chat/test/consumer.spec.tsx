@@ -11,6 +11,8 @@ import {
   Text,
   MessageRow,
   MentionPopover,
+  MessagesView,
+  SiblingSwitch,
   getHeaderHoverLabel,
   EventSubagentActivityGroup,
 } from '@librechat/chat/components';
@@ -18,6 +20,7 @@ import { initReactI18next, I18nextProvider } from 'react-i18next';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { Button, Textarea, ThemeProvider, clickHouseTheme } from '@librechat/client';
 import {
+  ChatContext,
   MessageContext,
   MessagePartIndex,
   StreamHostProvider,
@@ -37,6 +40,7 @@ import type { PartRenderers } from '@librechat/chat/components';
 import type {
   StreamHost,
   ChatSurface,
+  ChatContract,
   MessagesHost,
   MessagePartsHost,
 } from '@librechat/chat/react';
@@ -500,5 +504,71 @@ describe('a consumer rendering subagent activity', () => {
     expect(child).toHaveTextContent('researcher-a');
     fireEvent.click(child as HTMLElement);
     expect(claimForeground).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a branched conversation through the package message list and its default thread', () => {
+    const root = '00000000-0000-0000-0000-000000000000';
+    const base = { conversationId: 'convo', createdAt: new Date().toISOString() };
+    const messages: TMessage[] = [
+      { ...base, messageId: 'u1', parentMessageId: root, isCreatedByUser: true, text: 'Question' },
+      { ...base, messageId: 'a1', parentMessageId: 'u1', isCreatedByUser: false, text: 'First' },
+      { ...base, messageId: 'a2', parentMessageId: 'u1', isCreatedByUser: false, text: 'Second' },
+    ];
+    const threadHost: MessagesHost = {
+      ...messagesHost,
+      renderMessageRow: ({ message, siblingIdx, siblingCount, setSiblingIdx }) => {
+        const label = message.isCreatedByUser ? 'You' : 'Assistant';
+        return (
+          <MessageRow
+            message={message}
+            label={label}
+            ariaLabel={label}
+            icon={null}
+            footer={
+              <SiblingSwitch
+                siblingIdx={siblingIdx}
+                siblingCount={siblingCount}
+                setSiblingIdx={setSiblingIdx}
+              />
+            }
+            isCreatedByUser={message.isCreatedByUser}
+          >
+            <p>{message.text}</p>
+          </MessageRow>
+        );
+      },
+    };
+    const contract = {
+      index: 0,
+      isSubmitting: false,
+      latestMessageDepth: 0,
+      messagesKey: 'convo',
+    } as ChatContract;
+    render(
+      <I18nextProvider i18n={i18n}>
+        <ChatContext.Provider value={contract}>
+          <MessagesHostProvider host={threadHost}>
+            <MessagePartsHostProvider host={host}>
+              <MessagesView
+                messages={messages}
+                messagesTree={messages}
+                showScrollButton={false}
+                maximizeChatSpace={false}
+              />
+            </MessagePartsHostProvider>
+          </MessagesHostProvider>
+        </ChatContext.Provider>
+      </I18nextProvider>,
+    );
+
+    const reply = screen.getByRole('group', { name: 'Assistant' });
+    expect(screen.getByRole('group', { name: 'You' })).toHaveTextContent('Question');
+    expect(reply).toHaveTextContent('Second');
+    expect(within(reply).getByRole('status')).toHaveTextContent('2 / 2');
+
+    fireEvent.click(within(reply).getByRole('button', { name: 'com_ui_previous_sibling' }));
+    const older = screen.getByRole('group', { name: 'Assistant' });
+    expect(older).toHaveTextContent('First');
+    expect(within(older).getByRole('status')).toHaveTextContent('1 / 2');
   });
 });
